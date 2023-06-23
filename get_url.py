@@ -104,7 +104,7 @@ def parse_property_page(property_id, debug=False):
     soup = BeautifulSoup(html_doc, 'html.parser')
     preprocess(soup)
 
-    price = soup.find_all("h3", {"class": "perMonthPrice"})[0]
+    price = soup.find_all("h3", {"class": "price-title"})[0]
     price = float(price.text[1:].replace(',', ''))
 
     desc = soup.find_all("div", {"class": "description"})[0]

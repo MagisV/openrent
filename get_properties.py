@@ -7,8 +7,13 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlencode
 from collections import OrderedDict
 from get_url import parse_property_page, property_filepath
-from slackclient import SlackClient
+from slack import WebClient
 import os
+import time
+from selenium import webdriver
+
+PRICE_MAX = 3000
+PRICE_MIN = 0
 
 with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                        "config.json")) as f:
@@ -16,7 +21,7 @@ with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
     token = config["slack_token"]
     work_addr1 = config["work_addr1"]
 
-sc = SlackClient(token)
+sc = WebClient(token)
 
 
 def directions_link(prop):
@@ -46,10 +51,10 @@ def should_notify(prop):
     desc = prop['description']
     epc = prop['EPC']
 
-    if price > 1400:
-        return False, "too expensive: %s > 1400" % price
-    if price < 1000:
-        return False, "too cheap: %s < 1000" % price
+    if price > PRICE_MAX:
+        return False, "too expensive: %s > %s" % price, PRICE_MAX
+    if price < PRICE_MIN:
+        return False, "too cheap: %s < %s" % price, PRICE_MIN
 
     if "Note: This OpenRent Property Is No Longer Available For Rent" in desc:
         return False, "already let"
@@ -65,6 +70,8 @@ def should_notify(prop):
 
     if "shared flat" in title.lower():
         return False, "shared flat"
+
+    # add rules regarding distance to heathrow
 
     if epc and (epc.upper() in list("DEFG")):
         return False, "EPC is too low: %s" % epc.upper()
@@ -111,18 +118,33 @@ def notify(property_id):
 def update_list(should_notify=True):
     query_string = urlencode(
         OrderedDict(term=work_addr1,
-                    within="5",
-                    prices_min=1100,
-                    prices_max=1400,
-                    bedrooms_min=1,
-                    bedrooms_max=1,
-                    isLive="true"))
+                    within="7",
+                    prices_min=PRICE_MIN,
+                    prices_max=PRICE_MAX,
+                    bedrooms_min=3,
+                    bedrooms_max=3,
+                    isLive="true",
+                    acceptStudents="true"))
 
     url = ("http://www.openrent.co.uk/properties-to-rent/?%s" % query_string)
 
-    html_doc = urllib.request.urlopen(url).read()
-    soup = BeautifulSoup(html_doc, 'html.parser')
+    # scroll down the page using selenium
+    driver = webdriver.Firefox()
+    driver.get(url)
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    while True:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
 
+    # html_doc = urllib.request.urlopen(url).read()
+    # print("Received %s bytes..." % len(html_doc))
+    # soup = BeautifulSoup(html_doc, 'html.parser')
+
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
     if os.path.isfile(links_filepath()):
         with open(links_filepath()) as f:
             existing_links = json.load(f)
@@ -130,8 +152,8 @@ def update_list(should_notify=True):
         existing_links = {}
 
     with open(links_filepath(), 'w') as f:
-        latest_links = [x['href'][1:] for x
-                        in soup.find_all("a", class_="banda pt listing-title")]
+        latest_links = [x['href'][1:] for x in soup.find_all("a", class_="pli clearfix")]
+        print('latest links', latest_links)
         print("Received %s property links..." % len(latest_links))
         latest_and_old = list(set(latest_links) | set(existing_links))
         json.dump(latest_and_old, f, indent=4)
