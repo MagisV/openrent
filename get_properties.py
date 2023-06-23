@@ -7,13 +7,14 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlencode
 from collections import OrderedDict
 from get_url import parse_property_page, property_filepath
-from slack import WebClient
+from slack_sdk import WebClient
 import os
 import time
 from selenium import webdriver
 
 PRICE_MAX = 3000
 PRICE_MIN = 0
+KM_RANGE = 3
 
 with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                        "config.json")) as f:
@@ -22,7 +23,6 @@ with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
     work_addr1 = config["work_addr1"]
 
 sc = WebClient(token)
-
 
 def directions_link(prop):
     def maps_link(start_addr, end_addr):
@@ -73,7 +73,7 @@ def should_notify(prop):
 
     # add rules regarding distance to heathrow
 
-    if epc and (epc.upper() in list("DEFG")):
+    if epc and (epc.upper() in list("EFG")):
         return False, "EPC is too low: %s" % epc.upper()
 
     return True, ""
@@ -85,8 +85,9 @@ def notify(property_id):
     def make_link(property_id):
         return ("https://www.openrent.co.uk/%s" % property_id)
 
-    sc.api_call("api.test")
-    sc.api_call("channels.info", channel="1234567890")
+    # test_response = sc.api_test()
+    # print(test_response)
+    # sc.api_call("channels.info", channel="1234567890")
 
     with open(property_filepath(property_id)) as f:
         prop = json.load(f)
@@ -110,15 +111,17 @@ def notify(property_id):
         directions=directions_link(prop),
         has_garden="With garden. " if prop['has_garden'] else "")
 
-    sc.api_call("chat.postMessage", channel="#general",
-                text=text, username='propertybot',
-                icon_emoji=':new:')
+    sc.chat_postMessage(
+        channel="#general",
+        text=text, 
+        username='propertybot',
+        icon_emoji=':new:')
 
 
 def update_list(should_notify=True):
     query_string = urlencode(
         OrderedDict(term=work_addr1,
-                    within="7",
+                    within=str(KM_RANGE),
                     prices_min=PRICE_MIN,
                     prices_max=PRICE_MAX,
                     bedrooms_min=3,
@@ -139,10 +142,6 @@ def update_list(should_notify=True):
         if new_height == last_height:
             break
         last_height = new_height
-
-    # html_doc = urllib.request.urlopen(url).read()
-    # print("Received %s bytes..." % len(html_doc))
-    # soup = BeautifulSoup(html_doc, 'html.parser')
 
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     if os.path.isfile(links_filepath()):
