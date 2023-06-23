@@ -14,8 +14,8 @@ from selenium import webdriver
 PRICE_MAX = 3000
 PRICE_MIN = 0
 KM_RANGE = 15
-MAX_TRANSIT_DURATION_BH = 45
-MAX_TRANSIT_DURATION_HEATHROW = 70
+MAX_TRANSIT_DURATION_BH = 40
+MAX_TRANSIT_DURATION_HEATHROW = 60
 
 with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                        "config.json")) as f:
@@ -119,9 +119,13 @@ def notify(property_id):
         time_to_place_1_bike=prop['duration_1_bike'],
         time_to_place_2_transit=prop['duration_2_transit'],
         has_garden="With garden. " if prop['has_garden'] else "")
-
+    channel = '#houses-medium'
+    if prop['duration_1_transit'] is None:
+        channel = '#houses-distance-none'
+    elif prop['duration_1_transit'] < MAX_TRANSIT_DURATION_BH - 15:
+        channel = '#houses-close'
     sc.chat_postMessage(
-        channel="#trying-not-to-be-homeless",
+        channel=channel,
         text=text, 
         username='propertybot',
         icon_emoji=':new:')
