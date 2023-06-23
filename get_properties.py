@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 import argparse
-import urllib.request
 import json
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode
@@ -14,30 +13,34 @@ from selenium import webdriver
 
 PRICE_MAX = 3000
 PRICE_MIN = 0
-KM_RANGE = 3
+KM_RANGE = 15
+MAX_TRANSIT_DURATION_BH = 45
+MAX_TRANSIT_DURATION_HEATHROW = 70
 
 with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                        "config.json")) as f:
     config = json.load(f)
     token = config["slack_token"]
+    center_addr = config["center_addr"]
     work_addr1 = config["work_addr1"]
+    work_addr2 = config["work_addr2"]
+    maps_api_key = config["maps_api_key"]
+
 
 sc = WebClient(token)
 
-def directions_link(prop):
-    def maps_link(start_addr, end_addr):
+def directions_link(from_addr, to_addr):
+    def maps_link(from_addr, to_addr):
         query_string = urlencode(
             OrderedDict(f="d",
-                        saddr=start_addr,
-                        daddr=end_addr,
+                        saddr=from_addr,
+                        daddr=to_addr,
                         dirflg="r"))
 
         return "http://maps.google.co.uk/?%s" % query_string
 
-    start_addr = ",".join(prop['title'].split(",")[1:])
-
-    return "Directions <{}|to {}>".format(
-        maps_link(start_addr, work_addr1), work_addr1)
+    return "<{}|{}>".format(
+        maps_link(from_addr, to_addr), "maps")
 
 
 def links_filepath():
@@ -71,11 +74,15 @@ def should_notify(prop):
     if "shared flat" in title.lower():
         return False, "shared flat"
 
-    # add rules regarding distance to heathrow
-
     if epc and (epc.upper() in list("EFG")):
         return False, "EPC is too low: %s" % epc.upper()
+    
+    if prop['duration_1_transit'] is not None and prop['duration_1_transit'] > MAX_TRANSIT_DURATION_BH:
+        return False, "too far from bush house: %s" % work_addr1
 
+    if prop['duration_2_transit'] is not None and prop['duration_2_transit'] > MAX_TRANSIT_DURATION_HEATHROW:
+        return False, "too far from heathrow: %s" % work_addr1
+    
     return True, ""
 
 
@@ -85,10 +92,6 @@ def notify(property_id):
     def make_link(property_id):
         return ("https://www.openrent.co.uk/%s" % property_id)
 
-    # test_response = sc.api_test()
-    # print(test_response)
-    # sc.api_call("channels.info", channel="1234567890")
-
     with open(property_filepath(property_id)) as f:
         prop = json.load(f)
 
@@ -97,9 +100,11 @@ def notify(property_id):
         print("Skipping notification: %s..." % reason)
         return
 
-    text = ("{title} close to {location} ({walk_duration}): <{link}>. "
-            "Price: {price}. Available from: {av}. EPC: {epc}. {has_garden}"
-            "{directions}.\nDescription: ```{desc}```").format(
+    text = ("{title} close to {location} ({walk_duration})\n<{link}>.\n\n"
+            "Price: {price}\nAvailable from: {av}\nEPC: {epc}\n{has_garden}\n\n"
+            "Directions to BH: {directions_to_place_1}.\nTime to BH by public transport: {time_to_place_1_transit}.\nTime to BH by bike: {time_to_place_1_bike}.\n\n"
+            "Directions to Heathrow: {directions_to_place_2}.\nTime to Heathrow by public transport: {time_to_place_2_transit}.\n"
+            "Description: ```{desc}```").format(
         location=prop['location'][0][0],
         walk_duration=prop['location'][0][1],
         link=make_link(property_id),
@@ -108,11 +113,15 @@ def notify(property_id):
         av=prop['available_from'],
         title=prop['title'],
         epc=prop['EPC'],
-        directions=directions_link(prop),
+        directions_to_place_1=directions_link(prop['address'], work_addr1),
+        directions_to_place_2=directions_link(prop['address'], work_addr2),
+        time_to_place_1_transit=prop['duration_1_transit'],
+        time_to_place_1_bike=prop['duration_1_bike'],
+        time_to_place_2_transit=prop['duration_2_transit'],
         has_garden="With garden. " if prop['has_garden'] else "")
 
     sc.chat_postMessage(
-        channel="#general",
+        channel="#trying-not-to-be-homeless",
         text=text, 
         username='propertybot',
         icon_emoji=':new:')
@@ -120,7 +129,7 @@ def notify(property_id):
 
 def update_list(should_notify=True):
     query_string = urlencode(
-        OrderedDict(term=work_addr1,
+        OrderedDict(term=center_addr,
                     within=str(KM_RANGE),
                     prices_min=PRICE_MIN,
                     prices_max=PRICE_MAX,
@@ -180,3 +189,4 @@ if __name__ == "__main__":
         print("No links.json detected. This must be the first run: not"
               " notifying about all suitable properties.")
     update_list(should_notify=should_notify_)
+

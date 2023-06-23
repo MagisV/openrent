@@ -8,7 +8,9 @@ from collections import OrderedDict
 import os
 import json
 import dateparser
-
+import requests
+import time
+from datetime import datetime, timedelta
 
 def preprocess(soup):
     ticks = soup.find_all("i", attrs={'class': 'fa fa-check'})
@@ -85,7 +87,36 @@ def has_garden(features):
 
         return has_garden
 
+# load maps api key from config
+with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "config.json")) as f:
+    config = json.load(f)
+    maps_api_key = config["maps_api_key"]
+    work_addr1 = config["work_addr1"]
+    work_addr2 = config["work_addr2"]
 
+def get_distance_and_time(origin, destination, mode):    
+    url = f"https://maps.googleapis.com/maps/api/directions/json?origin={origin}&destination={destination}&mode={mode}&key={maps_api_key}"      
+    payload={}     
+    headers={}      
+
+    # 9am yesterday, so not in the middle of the night
+    if mode == 'transit':
+        yesterday_9am = datetime.now() - timedelta(days=1)
+        departure_time = yesterday_9am.replace(hour=9, minute=0, second=0)
+        departure_timestamp = int(time.mktime(departure_time.timetuple()))
+        url += f"&departure_time={departure_timestamp}"
+
+    response = requests.request("GET", url, headers=headers, data=payload)      
+    data = json.loads(response.text)      
+    if data['status'] == 'OK':         
+        routes = data['routes'][0]  # Get the first route         
+        legs = routes['legs'][0]  # Get the first leg of the journey          
+        # distance = legs['distance']['value']  # Get the distance         
+        duration = legs['duration']['value']  # Get the duration          
+        return duration / 60  # convert to minutes     
+    else:         
+        return None
+    
 def parse_property_page(property_id, debug=False):
     print("Processing property:", property_id)
 
@@ -111,18 +142,30 @@ def parse_property_page(property_id, debug=False):
     desc = desc.get_text().strip()
     desc.replace("\t", "")
 
-    location = parse_location_table(soup)
     features = parse_feature_table(soup)
+    title = get_title(soup)
+    start_addr = ",".join(title.split(",")[1:])
+
+    # distances
+    # if start_addr:
+    duration_1_transit = get_distance_and_time(start_addr, work_addr1, "transit")
+    duration_1_bike = get_distance_and_time(start_addr, work_addr1, "bicycling")
+    duration_2_transit = get_distance_and_time(start_addr, work_addr2, "transit")
 
     prop = OrderedDict()
+    
     prop['id'] = property_id
-    prop['title'] = get_title(soup)
-    prop['location'] = location
+    prop['title'] = title
+    prop['address'] = start_addr
+    prop['location'] = parse_location_table(soup)
     prop['price'] = price
     prop['description'] = desc
     prop['available_from'] = available_from(features)
     prop['EPC'] = EPC_rating(features)
     prop['has_garden'] = has_garden(features)
+    prop['duration_1_transit'] = duration_1_transit
+    prop['duration_1_bike'] = duration_1_bike
+    prop['duration_2_transit'] = duration_2_transit
 
     if not debug:
         with open(property_filepath(property_id), "w") as f:
