@@ -11,6 +11,7 @@ import dateparser
 import requests
 import time
 from datetime import datetime, timedelta
+import math
 
 def preprocess(soup):
     ticks = soup.find_all("i", attrs={'class': 'fa fa-check'})
@@ -113,7 +114,7 @@ def get_distance_and_time(origin, destination, mode):
         legs = routes['legs'][0]  # Get the first leg of the journey          
         # distance = legs['distance']['value']  # Get the distance         
         duration = legs['duration']['value']  # Get the duration          
-        return duration / 60  # convert to minutes     
+        return math.ceil(duration / 60)  # convert to minutes     
     else:         
         return None
     
