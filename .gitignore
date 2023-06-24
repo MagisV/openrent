@@ -2,3 +2,6 @@ config.json
 links.json
 geckodriver.log
 __pycache__
+logs
+properties
+venv

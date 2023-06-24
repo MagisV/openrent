@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/Users/valentinmagis/Documents/Projects/openrent/venv/bin/python3
 
 import argparse
 import json

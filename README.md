@@ -75,6 +75,9 @@ Then add the folling to your crontab:
 */10 * * * * /usr/local/bin/python3 $HOME/openrent/get_properties.py
 ```
 
+For mac, launchd is recommended now - here a tutorial
+https://davidhamann.de/2018/03/13/setting-up-a-launchagent-macos-cron/
+
 # Usage
 
 Depending on what browser you are using, you will need to adjust 
