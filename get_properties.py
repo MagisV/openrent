@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/local/bin/python3
 
 import argparse
 import json
@@ -14,8 +14,10 @@ from selenium import webdriver
 PRICE_MAX = 3000
 PRICE_MIN = 0
 KM_RANGE = 15
-MAX_TRANSIT_DURATION_BH = 40
-MAX_TRANSIT_DURATION_HEATHROW = 60
+MAX_TRANSIT_DURATION_WORK_ADDR_1 = 40
+MAX_TRANSIT_DURATION_WORK_ADDR_2 = 65
+BEDROOMS_MIN = 3
+BEDROOMS_MAX = 3
 
 with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                        "config.json")) as f:
@@ -74,13 +76,13 @@ def should_notify(prop):
     if "shared flat" in title.lower():
         return False, "shared flat"
 
-    if epc and (epc.upper() in list("EFG")):
+    if epc and (epc.upper() in list("EFG")): # add not wanted epc ratings in here
         return False, "EPC is too low: %s" % epc.upper()
     
-    if prop['duration_1_transit'] is not None and prop['duration_1_transit'] > MAX_TRANSIT_DURATION_BH:
+    if prop['duration_1_transit'] is not None and prop['duration_1_transit'] > MAX_TRANSIT_DURATION_WORK_ADDR_1:
         return False, "too far from bush house: %s" % work_addr1
 
-    if prop['duration_2_transit'] is not None and prop['duration_2_transit'] > MAX_TRANSIT_DURATION_HEATHROW:
+    if prop['duration_2_transit'] is not None and prop['duration_2_transit'] > MAX_TRANSIT_DURATION_WORK_ADDR_2:
         return False, "too far from heathrow: %s" % work_addr1
     
     return True, ""
@@ -122,7 +124,7 @@ def notify(property_id):
     channel = '#houses-medium'
     if prop['duration_1_transit'] is None:
         channel = '#houses-distance-none'
-    elif prop['duration_1_transit'] < MAX_TRANSIT_DURATION_BH - 15:
+    elif prop['duration_1_transit'] < MAX_TRANSIT_DURATION_WORK_ADDR_1 - 15:
         channel = '#houses-close'
     sc.chat_postMessage(
         channel=channel,
@@ -137,8 +139,8 @@ def update_list(should_notify=True):
                     within=str(KM_RANGE),
                     prices_min=PRICE_MIN,
                     prices_max=PRICE_MAX,
-                    bedrooms_min=3,
-                    bedrooms_max=3,
+                    bedrooms_min=BEDROOMS_MIN,
+                    bedrooms_max=BEDROOMS_MAX,
                     isLive="true",
                     acceptStudents="true"))
 
